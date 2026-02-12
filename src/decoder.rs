@@ -42,20 +42,32 @@ pub fn run_loop(
             .build()
             .expect("h264parse");
 
-        let (decoder, decoder_name) =
-            match gstreamer::ElementFactory::make("avdec_h264").build() {
-                Ok(d) => {
-                    println!("  Using software H.264 decoder (avdec_h264)");
-                    (d, "avdec_h264")
-                }
-                Err(_) => {
-                    let d = gstreamer::ElementFactory::make("vtdec")
-                        .build()
-                        .expect("Neither avdec_h264 nor vtdec available");
-                    println!("  Using hardware H.264 decoder (vtdec)");
-                    (d, "vtdec")
-                }
-            };
+        // Try hardware decoders first, fall back to software.
+        // Order: VA (modern) → VA-API (legacy) → NVIDIA → VideoToolbox (macOS) → software
+        let hw_decoders = [
+            ("vah264dec", "VA H.264 (Intel/AMD)"),
+            ("vaapih264dec", "VA-API H.264 (Intel/AMD)"),
+            ("nvh264dec", "NVIDIA NVDEC H.264"),
+            ("vtdec", "VideoToolbox (macOS)"),
+        ];
+        let (decoder, decoder_name) = hw_decoders
+            .iter()
+            .find_map(|(name, label)| {
+                gstreamer::ElementFactory::make(name)
+                    .build()
+                    .ok()
+                    .map(|d| {
+                        println!("  Using hardware decoder: {label} ({name})");
+                        (d, *name)
+                    })
+            })
+            .unwrap_or_else(|| {
+                let d = gstreamer::ElementFactory::make("avdec_h264")
+                    .build()
+                    .expect("No H.264 decoder available (tried hw + avdec_h264)");
+                println!("  Using software decoder: avdec_h264");
+                (d, "avdec_h264")
+            });
 
         let videoscale =
             gstreamer::ElementFactory::make("videoscale").build().expect("videoscale");
