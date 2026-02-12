@@ -33,7 +33,7 @@ pub fn spawn(endpoint: String, topic: String, h264_tx: mpsc::Sender<Vec<u8>>) {
 
                 // Decode CDR-encoded foxglove CompressedVideo
                 match cdr::decode_compressed_video(&payload) {
-                    Some((data, format)) => {
+                    Ok((data, format)) => {
                         if count % 100 == 1 {
                             println!(
                                 "Message #{count}: CDR CompressedVideo format={format}, data={} bytes",
@@ -44,10 +44,10 @@ pub fn spawn(endpoint: String, topic: String, h264_tx: mpsc::Sender<Vec<u8>>) {
                             let _ = h264_tx.send(data);
                         }
                     }
-                    None => {
+                    Err(reason) => {
                         if count % 100 == 1 {
                             println!(
-                                "Message #{count}: CDR decode failed, raw {} bytes",
+                                "Message #{count}: CDR decode failed ({reason}), raw {} bytes",
                                 payload.len()
                             );
                         }
