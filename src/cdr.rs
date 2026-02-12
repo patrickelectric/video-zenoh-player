@@ -28,21 +28,17 @@ pub struct CompressedVideo {
 
 /// Decode a CDR-encoded foxglove CompressedVideo message.
 ///
-/// The first 4 bytes are the CDR encapsulation header:
-///   byte 0: reserved (0x00)
-///   byte 1: endianness (0x00 = big-endian, 0x01 = little-endian)
-///   bytes 2-3: options
+/// The buffer must include the 4-byte CDR encapsulation header produced by
+/// `cdr::serialize` — `cdr::deserialize` consumes it automatically.
 ///
 /// Returns (video_data, format_string) on success.
-pub fn decode_compressed_video(buf: &[u8]) -> Option<(Vec<u8>, String)> {
+pub fn decode_compressed_video(buf: &[u8]) -> Result<(Vec<u8>, String), String> {
     if buf.len() < 4 {
-        return None;
+        return Err(format!("payload too short ({} bytes, need ≥4)", buf.len()));
     }
 
-    // Skip the 4-byte CDR encapsulation header
-    let payload = &buf[4..];
+    let msg: CompressedVideo =
+        cdr::deserialize(buf).map_err(|e| format!("CDR deserialize: {e}"))?;
 
-    let msg: CompressedVideo = cdr::deserialize(payload).ok()?;
-
-    Some((msg.data, msg.format))
+    Ok((msg.data, msg.format))
 }
