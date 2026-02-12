@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -12,7 +13,7 @@ use gstreamer::prelude::*;
 /// shut it down cleanly on exit.
 pub fn run_loop(
     h264_rx: mpsc::Receiver<Vec<u8>>,
-    rgba_tx: mpsc::SyncSender<(Vec<u8>, u32, u32)>,
+    rgba_tx: mpsc::SyncSender<(Vec<u8>, u32, u32, usize)>,
     pipeline_holder: Arc<Mutex<Option<gstreamer::Element>>>,
 ) {
 
@@ -123,6 +124,11 @@ pub fn run_loop(
             *holder = Some(pipeline.clone().upcast());
         }
 
+        // Track the compressed H.264 frame size so the appsink callback can
+        // forward it alongside the decoded RGBA data.
+        let last_h264_size = Arc::new(AtomicUsize::new(0));
+        let last_h264_size_cb = last_h264_size.clone();
+
         // Forward decoded RGBA frames from appsink
         appsink.set_callbacks(
             gstreamer_app::AppSinkCallbacks::builder()
@@ -138,7 +144,8 @@ pub fn run_loop(
                         .map_readable()
                         .map_err(|_| gstreamer::FlowError::Error)?;
 
-                    let _ = rgba_tx.try_send((map.as_slice().to_vec(), info.width(), info.height()));
+                    let h264_size = last_h264_size_cb.load(Ordering::Relaxed);
+                    let _ = rgba_tx.try_send((map.as_slice().to_vec(), info.width(), info.height(), h264_size));
                     Ok(gstreamer::FlowSuccess::Ok)
                 })
                 .build(),
@@ -209,6 +216,7 @@ pub fn run_loop(
                 println!("  Pump #{pump_count}: {} bytes", data.len());
             }
 
+            last_h264_size.store(data.len(), Ordering::Relaxed);
             let mut buffer = gstreamer::Buffer::from_slice(data);
             {
                 let buf_ref = buffer.get_mut().unwrap();

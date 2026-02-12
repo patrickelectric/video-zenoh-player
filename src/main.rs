@@ -19,7 +19,8 @@ fn main() -> eframe::Result {
 
     // --- Channels ---
     let (h264_tx, h264_rx) = mpsc::channel::<Vec<u8>>();
-    let (rgba_tx, rgba_rx) = mpsc::sync_channel::<(Vec<u8>, u32, u32)>(2);
+    // (rgba_data, width, height, compressed_h264_size)
+    let (rgba_tx, rgba_rx) = mpsc::sync_channel::<(Vec<u8>, u32, u32, usize)>(2);
 
     // --- Zenoh subscriber (background thread) ---
     zenoh_sub::spawn(args.endpoint, args.topic, h264_tx);
